@@ -10,5 +10,5 @@ Builds on the upstream [actions-runner][1] with the following additions:
 The primary use case is to deploy to a kubernetes cluster using short lived
 tokens starting from the Github oidc id jwt.
 
-[1]: https://hub.docker.com/r/summerwind/actions-runner
+[1]: https://github.com/actions/actions-runner-controller/blob/master/runner/actions-runner.ubuntu-22.04.dockerfile
 [2]: https://github.com/actions/setup-python

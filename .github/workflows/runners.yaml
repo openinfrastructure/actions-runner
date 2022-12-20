@@ -1,0 +1,74 @@
+name: Runners
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches:
+      - 'main'
+    paths:
+      - 'runner/**'
+      - '!runner/Makefile'
+      - '.github/workflows/runners.yaml'
+      - '!**.md'
+  # We must do a trigger on a push: instead of a types: closed so GitHub Secrets 
+  # are available to the workflow run
+  push:
+    branches:
+      - 'main'
+    paths:
+      - 'runner/**'
+      - '!runner/Makefile'
+      - '.github/workflows/runners.yaml'
+      - '!**.md'
+
+env:
+  RUNNER_VERSION: 2.299.1
+  DOCKER_VERSION: 20.10.21
+  RUNNER_CONTAINER_HOOKS_VERSION: 0.1.3
+
+jobs:
+  build-runners:
+    name: Build ${{ matrix.name }}-${{ matrix.os-name }}-${{ matrix.os-version }}
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: actions-runner
+            os-name: ubuntu
+            os-version: 22.04
+            latest: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Docker Environment
+        uses: ./.github/actions/setup-docker-environment
+        with:
+          ghcr_username: ${{ github.actor }}
+          ghcr_password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Versioned Tags
+        uses: docker/build-push-action@v3
+        with:
+          context: ./runner
+          file: ./runner/${{ matrix.name }}.${{ matrix.os-name }}-${{ matrix.os-version }}.dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          build-args: |
+            RUNNER_VERSION=${{ env.RUNNER_VERSION }}
+            DOCKER_VERSION=${{ env.DOCKER_VERSION }}
+            RUNNER_CONTAINER_HOOKS_VERSION=${{ env.RUNNER_CONTAINER_HOOKS_VERSION }}
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}:v${{ env.RUNNER_VERSION }}-${{ matrix.os-name }}-${{ matrix.os-version }}
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}:v${{ env.RUNNER_VERSION }}-${{ matrix.os-name }}-${{ matrix.os-version }}-${{ env.sha_short }}
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}:${{ matrix.os-name }}-${{ matrix.os-version }}
+          cache-from: type=gha,scope=build-${{ matrix.name }}-${{ matrix.os-name }}-${{ matrix.os-version }}
+          cache-to: type=gha,mode=max,scope=build-${{ matrix.name }}-${{ matrix.os-name }}-${{ matrix.os-version }}
