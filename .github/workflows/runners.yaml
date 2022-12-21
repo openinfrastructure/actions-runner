@@ -28,6 +28,8 @@ env:
   RUNNER_VERSION: '2.300.2'
   DOCKER_VERSION: '20.10.21'
   RUNNER_CONTAINER_HOOKS_VERSION: '0.1.3'
+  # curl -s https://packages.cloud.google.com/apt/dists/kubernetes-xenial/main/binary-amd64/Packages | grep Version | awk '{print $2}'
+  KUBE_VERSION: '1.25.5'
 
 
 jobs:
@@ -56,7 +58,7 @@ jobs:
           ghcr_username: ${{ github.actor }}
           ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Versioned Tags
+      - name: Build and Push Upstream Image
         uses: docker/build-push-action@v3
         with:
           context: ./runner
@@ -73,3 +75,19 @@ jobs:
             ghcr.io/${{ github.repository }}/${{ matrix.name }}:${{ matrix.os-name }}-${{ matrix.os-version }}
           cache-from: type=gha,scope=build-${{ matrix.name }}-${{ matrix.os-name }}-${{ matrix.os-version }}
           cache-to: type=gha,mode=max,scope=build-${{ matrix.name }}-${{ matrix.os-name }}-${{ matrix.os-version }}
+
+      - name: Build and Push OIS Image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./runner
+          file: ./runner/${{ matrix.name }}-ois.${{ matrix.os-name }}-${{ matrix.os-version }}.dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          build-args: |
+            KUBE_VERSION=${{ env.KUBE_VERSION }}
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}-ois:v${{ env.RUNNER_VERSION }}-${{ matrix.os-name }}-${{ matrix.os-version }}
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}-ois:v${{ env.RUNNER_VERSION }}-${{ matrix.os-name }}-${{ matrix.os-version }}-${{ env.sha_short }}
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}-ois:${{ matrix.os-name }}-${{ matrix.os-version }}
+          cache-from: type=gha,scope=build-${{ matrix.name }}-ois-${{ matrix.os-name }}-${{ matrix.os-version }}
+          cache-to: type=gha,mode=max,scope=build-${{ matrix.name }}-ois-${{ matrix.os-name }}-${{ matrix.os-version }}
