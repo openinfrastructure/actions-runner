@@ -4,12 +4,15 @@ ARG TARGETPLATFORM
 ARG RUNNER_VERSION=2.299.1
 ARG RUNNER_CONTAINER_HOOKS_VERSION=0.1.3
 # Docker and Docker Compose arguments
-ARG CHANNEL=stable
-ARG DOCKER_VERSION=20.10.21
+ENV CHANNEL=stable
 ARG DOCKER_COMPOSE_VERSION=v2.12.2
 ARG DUMB_INIT_VERSION=1.2.5
 ARG RUNNER_USER_UID=1001
-ARG DOCKER_GROUP_GID=121
+
+# Other arguments
+ARG DEBUG=false
+
+RUN test -n "$TARGETPLATFORM" || (echo "TARGETPLATFORM must be set" && false)
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -y \
@@ -21,20 +24,26 @@ RUN apt-get update -y \
     ca-certificates \
     git \
     git-lfs \
+    iproute2 \
+    iptables \
     jq \
     sudo \
+    uidmap \
     unzip \
     zip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN adduser --disabled-password --gecos "" --uid $RUNNER_USER_UID runner \
-    && groupadd docker --gid $DOCKER_GROUP_GID \
-    && usermod -aG sudo runner \
-    && usermod -aG docker runner \
-    && echo "%sudo   ALL=(ALL:ALL) NOPASSWD:ALL" > /etc/sudoers \
-    && echo "Defaults env_keep += \"DEBIAN_FRONTEND\"" >> /etc/sudoers
+# Runner user
+RUN adduser --disabled-password --gecos "" --uid $RUNNER_USER_UID runner
 
 ENV HOME=/home/runner
+
+# Set-up subuid and subgid so that "--userns-remap=default" works
+RUN set -eux; \
+    addgroup --system dockremap; \
+    adduser --system --ingroup dockremap dockremap; \
+    echo 'dockremap:165536:65536' >> /etc/subuid; \
+    echo 'dockremap:165536:65536' >> /etc/subgid
 
 RUN export ARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2) \
     && if [ "$ARCH" = "arm64" ]; then export ARCH=aarch64 ; fi \
@@ -60,7 +69,7 @@ RUN export ARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2) \
 
 ENV RUNNER_TOOL_CACHE=/opt/hostedtoolcache
 RUN mkdir /opt/hostedtoolcache \
-    && chgrp docker /opt/hostedtoolcache \
+    && chgrp runner /opt/hostedtoolcache \
     && chmod g+rwx /opt/hostedtoolcache
 
 RUN cd "$RUNNER_ASSETS_DIR" \
@@ -68,24 +77,15 @@ RUN cd "$RUNNER_ASSETS_DIR" \
     && unzip ./runner-container-hooks.zip -d ./k8s \
     && rm -f runner-container-hooks.zip
 
-RUN set -vx; \
-    export ARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2) \
-    && if [ "$ARCH" = "arm64" ]; then export ARCH=aarch64 ; fi \
-    && if [ "$ARCH" = "amd64" ] || [ "$ARCH" = "i386" ]; then export ARCH=x86_64 ; fi \
-    && curl -fLo docker.tgz https://download.docker.com/linux/static/${CHANNEL}/${ARCH}/docker-${DOCKER_VERSION}.tgz \
-    && tar zxvf docker.tgz \
-    && install -o root -g root -m 755 docker/docker /usr/bin/docker \
-    && rm -rf docker docker.tgz
-
-RUN export ARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2) \
-    && if [ "$ARCH" = "arm64" ]; then export ARCH=aarch64 ; fi \
-    && if [ "$ARCH" = "amd64" ] || [ "$ARCH" = "i386" ]; then export ARCH=x86_64 ; fi \
-    && curl -fLo /usr/bin/docker-compose https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${ARCH} \
-    && chmod +x /usr/bin/docker-compose
+# Make the rootless runner directory executable
+RUN mkdir /run/user/1000 \
+    && chown runner:runner /run/user/1000 \
+    && chmod a+x /run/user/1000
 
 # We place the scripts in `/usr/bin` so that users who extend this image can
 # override them with scripts of the same name placed in `/usr/local/bin`.
-COPY entrypoint.sh startup.sh logger.sh graceful-stop.sh update-status /usr/bin/
+COPY entrypoint-dind-rootless.sh startup.sh logger.sh graceful-stop.sh update-status /usr/bin/
+RUN chmod +x /usr/bin/entrypoint-dind-rootless.sh /usr/bin/startup.sh
 
 # Copy the docker shim which propagates the docker MTU to underlying networks
 # to replace the docker binary in the PATH.
@@ -94,12 +94,31 @@ COPY docker-shim.sh /usr/local/bin/docker
 # Configure hooks folder structure.
 COPY hooks /etc/arc/hooks/
 
+# Add the Python "User Script Directory" to the PATH
+ENV PATH="${PATH}:${HOME}/.local/bin:/home/runner/bin"
 ENV ImageOS=ubuntu22
+ENV DOCKER_HOST=unix:///run/user/1000/docker.sock
+ENV XDG_RUNTIME_DIR=/run/user/1000
 
 RUN echo "PATH=${PATH}" > /etc/environment \
-    && echo "ImageOS=${ImageOS}" >> /etc/environment
+    && echo "ImageOS=${ImageOS}" >> /etc/environment \
+    && echo "DOCKER_HOST=${DOCKER_HOST}" >> /etc/environment \
+    && echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}" >> /etc/environment
 
+# No group definition, as that makes it harder to run docker.
 USER runner
 
+# This will install docker under $HOME/bin according to the content of the script
+RUN export SKIP_IPTABLES=1 \
+    && curl -fsSL https://get.docker.com/rootless | sh \
+    && /home/runner/bin/docker -v
+
+RUN export ARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2) \
+    && if [ "$ARCH" = "arm64" ]; then export ARCH=aarch64 ; fi \
+    && if [ "$ARCH" = "amd64" ] || [ "$ARCH" = "i386" ]; then export ARCH=x86_64 ; fi \
+    && mkdir -p /home/runner/bin \
+    && curl -fLo /home/runner/bin/docker-compose https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-Linux-${ARCH} \
+    && chmod +x /home/runner/bin/docker-compose
+
 ENTRYPOINT ["/bin/bash", "-c"]
-CMD ["entrypoint.sh"]
+CMD ["entrypoint-dind-rootless.sh"]

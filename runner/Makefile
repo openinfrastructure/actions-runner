@@ -1,9 +1,8 @@
-PACKAGE_NAMESPACE ?= ghcr.io
-OWNER ?= openinfrastructure
+DOCKER_USER ?= summerwind
 DOCKER ?= docker
-DEFAULT_RUNNER_NAME ?= ${PACKAGE_NAMESPACE}/${OWNER}/actions-runner
-DIND_RUNNER_NAME ?= ${PACKAGE_NAMESPACE}/${OWNER}/actions-runner-dind
-DIND_ROOTLESS_RUNNER_NAME ?= ${PACKAGE_NAMESPACE}/${OWNER}/actions-runner-dind-rootless
+DEFAULT_RUNNER_NAME ?= ${DOCKER_USER}/actions-runner
+DIND_RUNNER_NAME ?= ${DOCKER_USER}/actions-runner-dind
+DIND_ROOTLESS_RUNNER_NAME ?= ${DOCKER_USER}/actions-runner-dind-rootless
 OS_IMAGE ?= ubuntu-22.04
 TARGETPLATFORM ?= $(shell arch)
 
@@ -40,6 +39,28 @@ else
   $(error Supported target platforms: linux/amd64 and linux/arm64)
 endif
 
+docker-build-set: check-target-platform
+	${DOCKER} build \
+	  --build-arg TARGETPLATFORM=${TARGETPLATFORM} \
+	  --build-arg RUNNER_VERSION=${RUNNER_VERSION} \
+	  --build-arg RUNNER_CONTAINER_HOOKS_VERSION=${RUNNER_CONTAINER_HOOKS_VERSION} \
+	  --build-arg DOCKER_VERSION=${DOCKER_VERSION} \
+	  -f actions-runner.${OS_IMAGE}.dockerfile \
+	  -t ${DEFAULT_RUNNER_NAME}:${OS_IMAGE} .
+	${DOCKER} build \
+	  --build-arg TARGETPLATFORM=${TARGETPLATFORM} \
+	  --build-arg RUNNER_VERSION=${RUNNER_VERSION} \
+	  --build-arg RUNNER_CONTAINER_HOOKS_VERSION=${RUNNER_CONTAINER_HOOKS_VERSION} \
+	  --build-arg DOCKER_VERSION=${DOCKER_VERSION} \
+	  -f actions-runner-dind.${OS_IMAGE}.dockerfile \
+	  -t ${DIND_RUNNER_NAME}:${OS_IMAGE} .
+	${DOCKER} build \
+	  --build-arg TARGETPLATFORM=${TARGETPLATFORM} \
+	  --build-arg RUNNER_VERSION=${RUNNER_VERSION} \
+	  --build-arg DOCKER_VERSION=${DOCKER_VERSION} \
+	  -f actions-runner-dind-rootless.${OS_IMAGE}.dockerfile \
+	  -t "${DIND_ROOTLESS_RUNNER_NAME}:${OS_IMAGE}" .
+
 docker-build-default: check-target-platform
 	${DOCKER} build \
 	  --build-arg TARGETPLATFORM=${TARGETPLATFORM} \
@@ -49,9 +70,25 @@ docker-build-default: check-target-platform
 	  -f actions-runner.${OS_IMAGE}.dockerfile \
 	  -t ${DEFAULT_RUNNER_NAME}:${OS_IMAGE} .
 
+docker-build-dind: check-target-platform
+	${DOCKER} build \
+	  --build-arg TARGETPLATFORM=${TARGETPLATFORM} \
+	  --build-arg RUNNER_VERSION=${RUNNER_VERSION} \
+	  --build-arg RUNNER_CONTAINER_HOOKS_VERSION=${RUNNER_CONTAINER_HOOKS_VERSION} \
+	  --build-arg DOCKER_VERSION=${DOCKER_VERSION} \
+	  -f actions-runner-dind.${OS_IMAGE}.dockerfile \
+	  -t ${DIND_RUNNER_NAME}:${OS_IMAGE} .
+
 docker-push-default:
 	${DOCKER} push "${DEFAULT_RUNNER_NAME}:${OS_IMAGE}"
 
+docker-push-dind:
+	${DOCKER} push "${DIND_RUNNER_NAME}:${OS_IMAGE}"
+
+docker-push-set:
+	${DOCKER} push "${DEFAULT_RUNNER_NAME}:${OS_IMAGE}"
+	${DOCKER} push "${DIND_RUNNER_NAME}:${OS_IMAGE}"
+	${DOCKER} push "${DIND_ROOTLESS_RUNNER_NAME}:${OS_IMAGE}"
 
 docker-buildx-set:
 	export DOCKER_CLI_EXPERIMENTAL=enabled ;\

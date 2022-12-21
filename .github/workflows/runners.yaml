@@ -1,4 +1,5 @@
-name: Runners
+# See https://github.com/actions/actions-runner-controller/blob/master/.github/workflows/runners.yaml
+name: Build Runner Container
 
 on:
   pull_request:
@@ -13,8 +14,6 @@ on:
       - '!runner/Makefile'
       - '.github/workflows/runners.yaml'
       - '!**.md'
-  # We must do a trigger on a push: instead of a types: closed so GitHub Secrets 
-  # are available to the workflow run
   push:
     branches:
       - 'main'
@@ -24,15 +23,17 @@ on:
       - '.github/workflows/runners.yaml'
       - '!**.md'
 
+# https://github.com/actions/runner/pkgs/container/actions-runner
 env:
-  RUNNER_VERSION: 2.299.1
-  DOCKER_VERSION: 20.10.21
-  RUNNER_CONTAINER_HOOKS_VERSION: 0.1.3
+  RUNNER_VERSION: '2.300.2'
+  DOCKER_VERSION: '20.10.21'
+  RUNNER_CONTAINER_HOOKS_VERSION: '0.1.3'
+
 
 jobs:
   build-runners:
     name: Build ${{ matrix.name }}-${{ matrix.os-name }}-${{ matrix.os-version }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       packages: write
       contents: read
@@ -42,8 +43,8 @@ jobs:
         include:
           - name: actions-runner
             os-name: ubuntu
-            os-version: 22.04
-            latest: "false"
+            os-version: '22.04'
+            latest: 'false'
 
     steps:
       - name: Checkout
