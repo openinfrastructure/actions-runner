@@ -12,6 +12,11 @@ RUN mkdir -p /etc/apt/keyrings \
     && apt-get install -y --no-install-recommends \
     openssh-client \
     kubectl=$KUBE_VERSION-00 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -4 -sL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o "awscliv2.zip" \
+    && unzip -qq  awscliv2.zip \
+    && ./aws/install -i /usr/local/aws-cli -b /usr/local/bin \
+    && aws --version \
+    && rm -rf awscliv2.zip aws/
 
 USER runner
