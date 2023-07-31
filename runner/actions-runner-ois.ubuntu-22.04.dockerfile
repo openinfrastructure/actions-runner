@@ -10,6 +10,7 @@ RUN mkdir -p /etc/apt/keyrings \
     && echo "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | tee /etc/apt/sources.list.d/kubernetes.list \
     && apt-get update -y \
     && apt-get install -y --no-install-recommends \
+    openssh-client \
     kubectl=$KUBE_VERSION-00 \
     && rm -rf /var/lib/apt/lists/*
 
