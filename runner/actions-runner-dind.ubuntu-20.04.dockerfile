@@ -1,12 +1,12 @@
 FROM ubuntu:20.04
 
 ARG TARGETPLATFORM
-ARG RUNNER_VERSION=2.299.1
-ARG RUNNER_CONTAINER_HOOKS_VERSION=0.1.2
+ARG RUNNER_VERSION
+ARG RUNNER_CONTAINER_HOOKS_VERSION
 # Docker and Docker Compose arguments
 ARG CHANNEL=stable
-ARG DOCKER_VERSION=20.10.18
-ARG DOCKER_COMPOSE_VERSION=v2.6.0
+ARG DOCKER_VERSION=20.10.23
+ARG DOCKER_COMPOSE_VERSION=v2.20.0
 ARG DUMB_INIT_VERSION=1.2.5
 
 # Use 1001 and 121 for compatibility with GitHub-hosted runners
@@ -106,8 +106,12 @@ RUN set -vx; \
 RUN export ARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2) \
     && if [ "$ARCH" = "arm64" ]; then export ARCH=aarch64 ; fi \
     && if [ "$ARCH" = "amd64" ] || [ "$ARCH" = "i386" ]; then export ARCH=x86_64 ; fi \
-    && curl -fLo /usr/bin/docker-compose https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${ARCH} \
-    && chmod +x /usr/bin/docker-compose
+    && mkdir -p /usr/libexec/docker/cli-plugins \
+    && curl -fLo /usr/libexec/docker/cli-plugins/docker-compose https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${ARCH} \
+    && chmod +x /usr/libexec/docker/cli-plugins/docker-compose \
+    && ln -s /usr/libexec/docker/cli-plugins/docker-compose /usr/bin/docker-compose \
+    && which docker-compose \
+    && docker compose version
 
 # We place the scripts in `/usr/bin` so that users who extend this image can
 # override them with scripts of the same name placed in `/usr/local/bin`.
